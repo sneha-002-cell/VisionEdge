@@ -1,5 +1,5 @@
 import cv2
-
+from config.settings import COUNTING_LINE_Y
 
 class Visualizer:
 
@@ -11,12 +11,12 @@ class Visualizer:
 
         # Draw the counting line
         cv2.line(
-            frame,
-            (0, 300),
-            (frame.shape[1], 300),
-            (0, 0, 255),
-            3
-        )
+    frame,
+    (0, COUNTING_LINE_Y),
+    (frame.shape[1], COUNTING_LINE_Y),
+    (0, 0, 255),
+    3
+)
 
         # Draw dashboard background
         cv2.rectangle(

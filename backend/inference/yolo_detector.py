@@ -1,4 +1,5 @@
 from ultralytics import YOLO
+from config.settings import CONFIDENCE_THRESHOLD
 
 
 class YOLODetector:
@@ -10,5 +11,6 @@ class YOLODetector:
             frame,
             persist=True,
             tracker="bytetrack.yaml",
+            conf=CONFIDENCE_THRESHOLD,
             verbose=False
         )

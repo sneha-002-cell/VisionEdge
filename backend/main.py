@@ -7,6 +7,7 @@ from utils.fps_counter import FPSCounter
 from utils.analytics import Analytics
 from utils.counter import ObjectCounter
 from utils.line_counter import LineCounter
+from config.settings import WINDOW_NAME
 
 
 def main():
@@ -80,7 +81,7 @@ def main():
         )
 
         # Display output
-        cv2.imshow("VisionEdge", output)
+        cv2.imshow(WINDOW_NAME, output)
 
         # Exit on Q
         if cv2.waitKey(1) & 0xFF == ord("q"):
