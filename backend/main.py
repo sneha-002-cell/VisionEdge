@@ -1,96 +1,47 @@
-import cv2
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from streaming.video_stream import VideoStream
-from inference.yolo_detector import YOLODetector
-from utils.visualizer import Visualizer
-from utils.fps_counter import FPSCounter
-from utils.analytics import Analytics
-from utils.counter import ObjectCounter
-from utils.line_counter import LineCounter
-from config.settings import WINDOW_NAME
+from backend.database.database import engine
+from backend.database.models import Base
 
+from backend.api.routes.detection import router as detection_router
+from backend.api.routes.video import router as video_router
+from backend.api.routes.analytics import router as analytics_router
+from backend.api.routes.history import router as history_router
+from backend.api.routes.alerts import router as alert_router
+from backend.api.routes.export import router as export_router
+from backend.api.routes.report import router as report_router
+from backend.auth.auth import router as auth_router
 
-def main():
-    # Initialize video stream
-    from config.settings import VIDEO_SOURCE
+app = FastAPI(
+    title="VisionEdge API",
+    description="AI Video Analytics Backend",
+    version="1.0.0",
+)
 
-    stream = VideoStream(VIDEO_SOURCE)
+Base.metadata.create_all(bind=engine)
 
-    # Load YOLO detector (with tracking enabled)
-    detector = YOLODetector()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    # Initialize FPS counter
-    fps_counter = FPSCounter()
+app.include_router(detection_router)
+app.include_router(video_router)
+app.include_router(analytics_router)
+app.include_router(history_router)
+app.include_router(alert_router)
+app.include_router(export_router)
+app.include_router(report_router)
+app.include_router(auth_router)
 
-    # Initialize Object Counter
-    counter = ObjectCounter()
+@app.get("/")
+def home():
+    return {"message": "Welcome to VisionEdge API"}
 
-    # Initialize Line Counter
-    line_counter = LineCounter()
-
-    while True:
-        # Read a frame
-        success, frame = stream.read()
-
-        if not success:
-            break
-
-        # Run object detection + tracking
-        results = detector.detect(frame)
-
-        # Extract tracking IDs
-        track_ids = []
-
-        # Check if tracking IDs are available
-        if results[0].boxes.id is not None:
-
-            boxes = results[0].boxes
-            track_ids = boxes.id.int().cpu().tolist()
-
-            # Check every tracked object
-            for box, track_id in zip(boxes.xyxy, track_ids):
-
-                # Bounding box coordinates
-                x1, y1, x2, y2 = box.tolist()
-
-                # Calculate center of object
-                center_y = (y1 + y2) / 2
-
-                # Update line counter
-                line_counter.update(track_id, center_y)
-
-        # Count unique tracked objects
-        total_count = counter.update(track_ids)
-
-        # Count detected objects by class
-        counts = Analytics.count_objects(results)
-
-        # Calculate FPS
-        fps = fps_counter.update()
-
-        # Current line crossing count
-        line_count = line_counter.count
-
-        # Draw dashboard
-        output = Visualizer.draw(
-            results,
-            fps,
-            counts,
-            total_count,
-            line_count
-        )
-
-        # Display output
-        cv2.imshow(WINDOW_NAME, output)
-
-        # Exit on Q
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    # Release resources
-    stream.release()
-    cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    main()
+@app.get("/health")
+def health():
+    return {"status": "running"}

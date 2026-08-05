@@ -1,0 +1,31 @@
+﻿# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+.env.*
+
+# Database
+*.db
+
+# Generated reports
+*.csv
+*.pdf
+
+# Node
+node_modules/
+
+# Frontend build
+frontend/dist/
+frontend/build/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
