@@ -32,3 +32,6 @@ Thumbs.db
 
 # Git backup
 *.bundle
+
+# Generated incident screenshots
+assets/incidents/

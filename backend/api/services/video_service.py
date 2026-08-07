@@ -1,5 +1,8 @@
 import cv2
 import time
+import os
+from datetime import datetime
+
 from ultralytics import YOLO
 
 from backend.api.services.analytics_service import update
@@ -11,9 +14,11 @@ from backend.core.heatmap import Heatmap
 from backend.core.line_counter import LineCounter
 from backend.core.restricted_zone import RestrictedZone
 
+
 # ------------------------------------
 # Initialize
 # ------------------------------------
+
 model = YOLO("yolo11n.pt")
 camera = cv2.VideoCapture(0)
 
@@ -22,6 +27,17 @@ line_counter = LineCounter()
 restricted_zone = RestrictedZone()
 
 prev_time = time.time()
+
+# ------------------------------------
+# Intrusion Screenshot Settings
+# ------------------------------------
+
+INCIDENT_FOLDER = "assets/incidents"
+os.makedirs(INCIDENT_FOLDER, exist_ok=True)
+
+# Prevent taking a screenshot every frame
+last_intrusion_time = {}
+INTRUSION_COOLDOWN = 10
 
 
 def generate_frames():
@@ -37,13 +53,17 @@ def generate_frames():
         # ----------------------------
         # FPS
         # ----------------------------
+
         current_time = time.time()
+
         fps = 1 / (current_time - prev_time)
+
         prev_time = current_time
 
         # ----------------------------
         # Detection + Tracking
         # ----------------------------
+
         results = detect_and_track(frame)
 
         names = model.names
@@ -58,6 +78,7 @@ def generate_frames():
         # ----------------------------
         # Heatmap
         # ----------------------------
+
         boxes = results[0].boxes.xyxy.cpu().numpy()
 
         if len(boxes) > 0:
@@ -66,6 +87,7 @@ def generate_frames():
         # ----------------------------
         # Count Objects
         # ----------------------------
+
         for box in results[0].boxes:
 
             cls = int(box.cls[0])
@@ -86,6 +108,7 @@ def generate_frames():
             # ----------------------------
             # Tracking
             # ----------------------------
+
             if box.id is not None:
 
                 track_id = int(box.id[0])
@@ -95,23 +118,67 @@ def generate_frames():
                 center_x = int((x1 + x2) / 2)
                 center_y = int((y1 + y2) / 2)
 
+                # ----------------------------
                 # Line Counter
+                # ----------------------------
+
                 line_counter.update(
                     track_id,
                     label,
                     center_y,
                 )
 
+                # ----------------------------
                 # Restricted Zone
+                # ----------------------------
+
                 if (
                     label == "person"
                     and restricted_zone.contains(center_x, center_y)
                 ):
-                    add_alert("🚨 Intrusion Detected!")
+
+                    current_time = time.time()
+
+                    last_time = last_intrusion_time.get(track_id, 0)
+
+                    # Take screenshot only once every 10 seconds
+                    # for the same tracked person
+                    if current_time - last_time >= INTRUSION_COOLDOWN:
+
+                        timestamp = datetime.now().strftime(
+                            "%Y%m%d_%H%M%S"
+                        )
+
+                        filename = (
+                            f"intrusion_{track_id}_{timestamp}.jpg"
+                        )
+
+                        filepath = os.path.join(
+                            INCIDENT_FOLDER,
+                            filename
+                        )
+
+                        # Save intrusion screenshot
+                        cv2.imwrite(filepath, frame)
+
+                        # Update cooldown
+                        last_intrusion_time[track_id] = current_time
+
+                        # Add alert
+                        add_alert(
+                            f"🚨 Intrusion Detected! "
+                            f"Screenshot: {filename}"
+                        )
+
+                        print(
+                            f"[ALERT] Intrusion screenshot saved: "
+                            f"{filepath}"
+                        )
 
         # ----------------------------
         # Analytics
         # ----------------------------
+
         analytics = {
             "people": counts["people"],
             "cars": counts["cars"],
@@ -126,6 +193,7 @@ def generate_frames():
         # ----------------------------
         # Save Database
         # ----------------------------
+
         db = SessionLocal()
 
         save_record(db, analytics)
@@ -135,12 +203,15 @@ def generate_frames():
         # ----------------------------
         # Alerts
         # ----------------------------
+
         if counts["people"] >= 3:
+
             add_alert(
                 f"Crowd Alert: {counts['people']} people detected"
             )
 
         if counts["cars"] >= 5:
+
             add_alert(
                 f"Traffic Alert: {counts['cars']} cars detected"
             )
@@ -148,6 +219,7 @@ def generate_frames():
         # ----------------------------
         # Draw detections
         # ----------------------------
+
         annotated = results[0].plot()
 
         # Heatmap
@@ -190,7 +262,7 @@ def generate_frames():
         # FPS
         cv2.putText(
             annotated,
-            f"FPS: {round(fps,1)}",
+            f"FPS: {round(fps, 1)}",
             (20, 110),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
@@ -201,12 +273,18 @@ def generate_frames():
         # ----------------------------
         # Encode
         # ----------------------------
-        _, buffer = cv2.imencode(".jpg", annotated)
+
+        _, buffer = cv2.imencode(
+            ".jpg",
+            annotated
+        )
+
         frame_bytes = buffer.tobytes()
 
         # ----------------------------
         # Stream
         # ----------------------------
+
         yield (
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n\r\n"
