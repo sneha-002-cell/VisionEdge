@@ -1,18 +1,37 @@
-function AnalyticsCard({ title, value, color }) {
+function AnalyticsCard({
+  title,
+  value,
+  icon: Icon,
+  accent = "green",
+}) {
   return (
-    <div
-      className="rounded-2xl shadow-xl p-6 bg-slate-900 transition-transform duration-300 hover:scale-105"
-      style={{
-        borderTop: `6px solid ${color}`,
-      }}
-    >
-      <h3 className="text-gray-400 text-lg">
-        {title}
-      </h3>
+    <div className={`stat-card ${accent}`}>
 
-      <h1 className="text-4xl font-bold mt-3">
+      <div className="stat-card-top">
+
+        <div className="stat-icon">
+          <Icon size={20} />
+        </div>
+
+        <span className="stat-live">
+          LIVE
+        </span>
+
+      </div>
+
+      <div className="stat-value">
         {value}
-      </h1>
+      </div>
+
+      <div className="stat-title">
+        {title}
+      </div>
+
+      <div className="stat-footer">
+        <span>Real-time reading</span>
+        <span className="mini-dot" />
+      </div>
+
     </div>
   );
 }

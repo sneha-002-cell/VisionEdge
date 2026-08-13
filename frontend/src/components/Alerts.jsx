@@ -1,44 +1,125 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/api";
+import {
+  ShieldAlert,
+  Clock,
+} from "lucide-react";
 
 function Alerts() {
+
   const [alerts, setAlerts] = useState([]);
 
   const fetchAlerts = async () => {
+
     try {
-      const res = await axios.get("http://127.0.0.1:8000/alerts");
+
+      const res = await api.get("/alerts");
+
       setAlerts(res.data);
+
     } catch (err) {
-      console.error(err);
+
+      console.error("Alert error:", err);
+
     }
+
   };
 
   useEffect(() => {
+
     fetchAlerts();
 
-    const interval = setInterval(fetchAlerts, 2000);
+    const interval = setInterval(
+      fetchAlerts,
+      2000
+    );
 
     return () => clearInterval(interval);
+
   }, []);
 
   return (
-    <div className="bg-slate-900 rounded-xl p-6 mt-10">
-      <h2 className="text-2xl font-bold text-red-500 mb-4">
-        🚨 Live Alerts
-      </h2>
+    <div className="alerts-panel">
+
+      <div className="alerts-header">
+
+        <div>
+
+          <div className="section-kicker danger-eyebrow">
+            SECURITY EVENTS
+          </div>
+
+          <h2>
+            <ShieldAlert size={22} />
+            Intrusion Alerts
+          </h2>
+
+        </div>
+
+        <div className="alert-count">
+          {alerts.length} EVENTS
+        </div>
+
+      </div>
 
       {alerts.length === 0 ? (
-        <p className="text-gray-400">No Alerts</p>
-      ) : (
-        alerts.map((alert, index) => (
-          <div
-            key={index}
-            className="bg-red-600 text-white p-3 rounded-lg mb-2"
-          >
-            {alert}
+
+        <div className="no-alerts">
+
+          <div className="safe-icon">
+            ✓
           </div>
-        ))
+
+          <strong>
+            No active security threats
+          </strong>
+
+          <span>
+            VisionEdge is monitoring the environment.
+          </span>
+
+        </div>
+
+      ) : (
+
+        <div className="alerts-list">
+
+          {alerts.map((alert, index) => (
+
+            <div
+              key={index}
+              className="alert-item"
+            >
+
+              <div className="alert-icon">
+                <ShieldAlert size={19} />
+              </div>
+
+              <div className="alert-information">
+
+                <strong>
+                  Intrusion Detected
+                </strong>
+
+                <span>
+                  {alert}
+                </span>
+
+              </div>
+
+              <div className="alert-time">
+                <Clock size={14} />
+                LIVE
+              </div>
+
+            </div>
+
+          ))}
+
+        </div>
+
       )}
+
     </div>
   );
 }

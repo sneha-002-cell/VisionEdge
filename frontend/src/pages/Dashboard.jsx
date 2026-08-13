@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
+import {
+  Users,
+  Car,
+  Bus,
+  Bike,
+  Gauge,
+  ArrowUpRight,
+  Activity,
+} from "lucide-react";
+
 import AnalyticsCard from "../components/AnalyticsCard";
-import VideoPlayer from "../components/VideoPlayer";
 import Charts from "../components/Charts";
-import Alerts from "../components/Alerts";
 import api from "../services/api";
-import DownloadButtons from "../components/DownloadButtons";
 
 function Dashboard() {
   const [analytics, setAnalytics] = useState({
@@ -22,8 +29,6 @@ function Dashboard() {
     const fetchAnalytics = async () => {
       try {
         const res = await api.get("/analytics");
-
-        console.log("Analytics:", res.data);
 
         setAnalytics(res.data);
 
@@ -50,74 +55,145 @@ function Dashboard() {
   }, []);
 
   return (
-    <div className="p-8 bg-slate-950 min-h-screen text-white">
+    <div className="page-content">
 
-      {/* Dashboard Title */}
-      <h1 className="text-4xl font-bold mb-8">
-        VisionEdge AI Dashboard
-      </h1>
+      {/* Page heading */}
 
-      {/* Analytics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-6">
+      <div className="page-heading">
+
+        <div>
+          <div className="eyebrow">
+            <Activity size={14} />
+            REAL-TIME INTELLIGENCE
+          </div>
+
+          <h1>Security Overview</h1>
+
+          <p>
+            Real-time AI video analytics and surveillance monitoring.
+          </p>
+        </div>
+
+        <div className="heading-status">
+          <span className="status-dot" />
+          Detection Engine Active
+        </div>
+
+      </div>
+
+      {/* Statistics */}
+
+      <div className="stats-grid">
 
         <AnalyticsCard
-          title="👤 People"
+          title="People"
           value={analytics.people}
-          color="#22c55e"
+          icon={Users}
+          accent="green"
         />
 
         <AnalyticsCard
-          title="🚗 Cars"
+          title="Vehicles"
           value={analytics.cars}
-          color="#3b82f6"
+          icon={Car}
+          accent="blue"
         />
 
         <AnalyticsCard
-          title="🚌 Buses"
+          title="Buses"
           value={analytics.buses}
-          color="#f97316"
+          icon={Bus}
+          accent="orange"
         />
 
         <AnalyticsCard
-          title="🏍️ Bikes"
+          title="Motorcycles"
           value={analytics.motorcycles}
-          color="#ec4899"
+          icon={Bike}
+          accent="purple"
         />
 
         <AnalyticsCard
-          title="📈 FPS"
-          value={analytics.fps}
-          color="#facc15"
+          title="Processing FPS"
+          value={Number(analytics.fps || 0).toFixed(2)}
+          icon={Gauge}
+          accent="yellow"
         />
 
         <AnalyticsCard
-          title="🔴 Crossings"
+          title="Line Crossings"
           value={analytics.line_crossings}
-          color="#ef4444"
+          icon={ArrowUpRight}
+          accent="red"
         />
 
       </div>
 
-      {/* Live Video */}
-      <div className="mt-10 rounded-xl overflow-hidden shadow-2xl">
-        <VideoPlayer />
+      {/* Quick access */}
+
+      <div className="section-header">
+        <div>
+          <span className="section-kicker">QUICK ACCESS</span>
+          <h2>Monitoring Center</h2>
+        </div>
+      </div>
+
+      <div className="quick-grid">
+
+        <a href="/live-camera" className="quick-card">
+          <div className="quick-icon green">
+            <Activity size={22} />
+          </div>
+
+          <div>
+            <h3>Live Camera</h3>
+            <p>View real-time AI detection feed</p>
+          </div>
+
+          <ArrowUpRight size={18} />
+        </a>
+
+        <a href="/analytics" className="quick-card">
+          <div className="quick-icon blue">
+            <Gauge size={22} />
+          </div>
+
+          <div>
+            <h3>Analytics</h3>
+            <p>Analyze detection trends and statistics</p>
+          </div>
+
+          <ArrowUpRight size={18} />
+        </a>
+
+        <a href="/intrusions" className="quick-card danger">
+          <div className="quick-icon red">
+            <Activity size={22} />
+          </div>
+
+          <div>
+            <h3>Security Events</h3>
+            <p>Review intrusion detections</p>
+          </div>
+
+          <ArrowUpRight size={18} />
+        </a>
+
       </div>
 
       {/* Charts */}
-      <div className="mt-10">
-        <Charts
-          history={history}
-          analytics={analytics}
-        />
+
+      <div className="section-header chart-heading">
+        <div>
+          <span className="section-kicker">ANALYTICS</span>
+          <h2>Detection Intelligence</h2>
+        </div>
       </div>
 
-      {/* Alerts */}
-      <div className="mt-10">
-        <Alerts />
-        <div className="mt-10">
-  <DownloadButtons />
-</div>
-      </div>
+      <Charts
+        history={history}
+        analytics={analytics}
+      />
 
     </div>
   );
