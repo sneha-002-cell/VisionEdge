@@ -1,5 +1,10 @@
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+load_dotenv()
 
 from backend.database.database import engine
 from backend.database.models import Base
@@ -13,21 +18,42 @@ from backend.api.routes.export import router as export_router
 from backend.api.routes.report import router as report_router
 from backend.auth.auth import router as auth_router
 
+
 app = FastAPI(
     title="VisionEdge API",
     description="AI Video Analytics Backend",
     version="1.0.0",
 )
 
+
+# -----------------------------
+# Database
+# -----------------------------
+
 Base.metadata.create_all(bind=engine)
+
+
+# -----------------------------
+# CORS
+# -----------------------------
+
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173"
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# -----------------------------
+# Routes
+# -----------------------------
 
 app.include_router(detection_router)
 app.include_router(video_router)
@@ -38,10 +64,24 @@ app.include_router(export_router)
 app.include_router(report_router)
 app.include_router(auth_router)
 
+
+# -----------------------------
+# Root
+# -----------------------------
+
 @app.get("/")
 def home():
-    return {"message": "Welcome to VisionEdge API"}
+    return {
+        "message": "Welcome to VisionEdge API"
+    }
+
+
+# -----------------------------
+# Health Check
+# -----------------------------
 
 @app.get("/health")
 def health():
-    return {"status": "running"}
+    return {
+        "status": "running"
+    }

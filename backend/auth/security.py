@@ -1,11 +1,17 @@
+import os
 from datetime import datetime, timedelta
-from jose import jwt
+
+from jose import jwt, JWTError
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
 
-SECRET_KEY = "visionedge-secret-key-change-this-in-production"
+
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "dev-secret-key-change-this"
+)
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
