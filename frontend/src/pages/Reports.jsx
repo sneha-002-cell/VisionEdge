@@ -4,40 +4,77 @@ import {
   Download,
 } from "lucide-react";
 
-const API_URL = "https://visionedge-api.onrender.com";
+
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:8000";
+
 
 function Reports() {
 
+
+  // ============================================================
+  // DOWNLOAD CSV
+  // ============================================================
+
   const downloadCSV = () => {
+
     window.open(
       `${API_URL}/export/csv`,
       "_blank"
     );
+
   };
 
+
+  // ============================================================
+  // DOWNLOAD PDF
+  // ============================================================
+
   const downloadPDF = () => {
+
     window.open(
       `${API_URL}/report`,
       "_blank"
     );
+
   };
 
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
+
     <div className="page-content">
+
+
+      {/* ======================================================
+          HEADER
+      ======================================================= */}
 
       <div className="page-heading">
 
         <div>
 
           <div className="eyebrow">
+
             <FileText size={14} />
+
             DATA EXPORT
+
           </div>
 
-          <h1>Reports</h1>
+
+          <h1>
+            Reports
+          </h1>
+
 
           <p>
-            Download and archive VisionEdge analytics reports.
+            Download and archive VisionEdge
+            analytics reports.
           </p>
 
         </div>
@@ -45,14 +82,27 @@ function Reports() {
       </div>
 
 
+      {/* ======================================================
+          REPORT CARDS
+      ======================================================= */}
+
       <div className="reports-grid">
 
-        {/* CSV REPORT */}
+
+        {/* ====================================================
+            CSV
+        ===================================================== */}
+
         <div className="report-card">
 
           <div className="report-icon csv">
-            <FileSpreadsheet size={28} />
+
+            <FileSpreadsheet
+              size={28}
+            />
+
           </div>
+
 
           <div className="report-content">
 
@@ -60,19 +110,32 @@ function Reports() {
               DATA EXPORT
             </span>
 
-            <h2>CSV Analytics Report</h2>
+
+            <h2>
+              CSV Analytics Report
+            </h2>
+
 
             <p>
-              Export detection statistics and historical
-              analytics as a CSV file.
+              Export detection statistics
+              and historical analytics
+              as a CSV file.
             </p>
+
 
             <button
               className="report-button green-button"
-              onClick={downloadCSV}
+              onClick={
+                downloadCSV
+              }
             >
-              <Download size={17} />
+
+              <Download
+                size={17}
+              />
+
               Download CSV
+
             </button>
 
           </div>
@@ -80,12 +143,20 @@ function Reports() {
         </div>
 
 
-        {/* PDF REPORT */}
+        {/* ====================================================
+            PDF
+        ===================================================== */}
+
         <div className="report-card">
 
           <div className="report-icon pdf">
-            <FileText size={28} />
+
+            <FileText
+              size={28}
+            />
+
           </div>
+
 
           <div className="report-content">
 
@@ -93,29 +164,46 @@ function Reports() {
               DOCUMENT
             </span>
 
-            <h2>PDF Security Report</h2>
+
+            <h2>
+              PDF Security Report
+            </h2>
+
 
             <p>
-              Generate a professional PDF report containing
-              VisionEdge analytics and security information.
+              Generate a professional PDF
+              containing VisionEdge analytics
+              and security information.
             </p>
+
 
             <button
               className="report-button red-button"
-              onClick={downloadPDF}
+              onClick={
+                downloadPDF
+              }
             >
-              <Download size={17} />
+
+              <Download
+                size={17}
+              />
+
               Download PDF
+
             </button>
 
           </div>
 
         </div>
 
+
       </div>
 
     </div>
+
   );
+
 }
+
 
 export default Reports;

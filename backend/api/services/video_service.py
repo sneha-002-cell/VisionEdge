@@ -2,6 +2,7 @@ import cv2
 import time
 import os
 import threading
+
 from datetime import datetime
 
 from backend.api.services.analytics_service import update
@@ -59,26 +60,21 @@ def get_video_source():
 
     source = VIDEO_SOURCE_ENV
 
-    # --------------------------------------------------------
-    # Integer webcam
-    # --------------------------------------------------------
-
     if isinstance(source, int):
+
         return source
 
-    # --------------------------------------------------------
-    # String source
-    # --------------------------------------------------------
 
     if isinstance(source, str):
 
         source = source.strip()
 
-        # Webcam through environment variable
+
         if source.isdigit():
+
             return int(source)
 
-        # Remote stream
+
         if source.startswith(
             (
                 "rtsp://",
@@ -86,9 +82,10 @@ def get_video_source():
                 "https://",
             )
         ):
+
             return source
 
-        # Local video file
+
         if not os.path.isabs(source):
 
             source = os.path.join(
@@ -96,7 +93,9 @@ def get_video_source():
                 source,
             )
 
+
         return source
+
 
     return source
 
@@ -125,7 +124,8 @@ IS_FILE = (
         VIDEO_SOURCE_VALUE,
         str,
     )
-    and os.path.isfile(
+    and
+    os.path.isfile(
         VIDEO_SOURCE_VALUE
     )
 )
@@ -212,30 +212,51 @@ INTRUSION_COOLDOWN = 10
 
 
 # ============================================================
-# CAMERA FRAME AI FPS
+# LATEST AI RESULT
 # ============================================================
 
-camera_ai_prev_time = time.time()
+latest_result = {
+    "people": 0,
+    "cars": 0,
+    "buses": 0,
+    "motorcycles": 0,
+    "fps": 0.0,
+    "line_crossings": 0,
+    "detections": [],
+    "intrusion": False,
+}
 
 
-# ============================================================
-# INITIAL ANALYTICS
-# ============================================================
-
-update(
-    {
-        "fps": 0.0,
-        "people": 0,
-        "cars": 0,
-        "buses": 0,
-        "motorcycles": 0,
-        "line_crossings": 0,
-    }
-)
+latest_result_lock = threading.Lock()
 
 
 # ============================================================
-# REOPEN CAMERA
+# ANALYTICS INITIALIZATION
+# ============================================================
+
+try:
+
+    update(
+        {
+            "fps": 0.0,
+            "people": 0,
+            "cars": 0,
+            "buses": 0,
+            "motorcycles": 0,
+            "line_crossings": 0,
+        }
+    )
+
+except Exception as e:
+
+    print(
+        "[WARNING] Analytics initialization error:",
+        e,
+    )
+
+
+# ============================================================
+# REOPEN VIDEO SOURCE
 # ============================================================
 
 def reopen_camera():
@@ -247,14 +268,18 @@ def reopen_camera():
         try:
 
             if camera is not None:
+
                 camera.release()
 
         except Exception:
+
             pass
+
 
         camera = cv2.VideoCapture(
             VIDEO_SOURCE_VALUE
         )
+
 
         if IS_WEBCAM:
 
@@ -273,6 +298,7 @@ def reopen_camera():
                 30,
             )
 
+
         return camera.isOpened()
 
 
@@ -287,478 +313,63 @@ def read_frame():
     with camera_lock:
 
         if camera is None:
+
             return False, None
 
+
         success, frame = camera.read()
+
 
     return success, frame
 
 
 # ============================================================
-# PROCESS CAMERA FRAME FROM REACT
+# GET LATEST AI RESULT
 # ============================================================
 
-def process_camera_frame(frame):
+def get_latest_result():
 
-    """
-    Process one frame received from the React laptop webcam.
+    with latest_result_lock:
 
-    React sends:
-
-        JPEG image
-              ↓
-        FastAPI
-              ↓
-        OpenCV
-              ↓
-        VisionEdge tracker
-              ↓
-        analytics JSON
-    """
-
-    global camera_ai_prev_time
-
-    if frame is None:
-
-        return {
-            "success": False,
-            "people": 0,
-            "cars": 0,
-            "buses": 0,
-            "motorcycles": 0,
-            "fps": 0.0,
-            "line_crossings": 0,
-            "detections": [],
-            "error": "Invalid camera frame.",
-        }
+        return latest_result.copy()
 
 
-    # ========================================================
-    # FPS
-    # ========================================================
+# ============================================================
+# SAVE ANALYTICS RECORD
+# ============================================================
 
-    current_time = time.time()
+def save_analytics_record(analytics):
 
-    elapsed = (
-        current_time -
-        camera_ai_prev_time
-    )
-
-    if elapsed > 0:
-
-        fps = 1 / elapsed
-
-    else:
-
-        fps = 0.0
-
-    camera_ai_prev_time = current_time
-
-
-    # ========================================================
-    # YOLO DETECTION + TRACKING
-    # ========================================================
+    db = SessionLocal()
 
     try:
 
-        results = detect_and_track(
-            frame
+        save_record(
+            db,
+            analytics,
         )
 
     except Exception as e:
 
         print(
-            "[ERROR] Camera frame YOLO error: "
-            f"{e}"
+            "[WARNING] Database error:",
+            e,
         )
 
-        return {
-            "success": False,
-            "people": 0,
-            "cars": 0,
-            "buses": 0,
-            "motorcycles": 0,
-            "fps": round(fps, 2),
-            "line_crossings": (
-                line_counter.people_crossed
-            ),
-            "detections": [],
-            "error": str(e),
-        }
+    finally:
 
-
-    if not results:
-
-        return {
-            "success": True,
-            "people": 0,
-            "cars": 0,
-            "buses": 0,
-            "motorcycles": 0,
-            "fps": round(fps, 2),
-            "line_crossings": (
-                line_counter.people_crossed
-            ),
-            "detections": [],
-        }
-
-
-    result = results[0]
-
-
-    # ========================================================
-    # CLASS NAMES
-    # ========================================================
-
-    names = result.names
-
-
-    # ========================================================
-    # COUNTS
-    # ========================================================
-
-    counts = {
-
-        "people": 0,
-
-        "cars": 0,
-
-        "buses": 0,
-
-        "motorcycles": 0,
-
-    }
-
-
-    # ========================================================
-    # DETECTIONS FOR FRONTEND
-    # ========================================================
-
-    detections = []
-
-
-    # ========================================================
-    # PROCESS DETECTIONS
-    # ========================================================
-
-    for box in result.boxes:
-
-        try:
-
-            cls = int(
-                box.cls[0]
-            )
-
-            label = names[cls]
-
-            confidence = float(
-                box.conf[0]
-            )
-
-        except Exception:
-
-            continue
-
-
-        # ----------------------------------------------------
-        # Count objects
-        # ----------------------------------------------------
-
-        if label == "person":
-
-            counts["people"] += 1
-
-        elif label == "car":
-
-            counts["cars"] += 1
-
-        elif label == "bus":
-
-            counts["buses"] += 1
-
-        elif label == "motorcycle":
-
-            counts["motorcycles"] += 1
-
-
-        # ----------------------------------------------------
-        # Detection response
-        # ----------------------------------------------------
-
-        detections.append(
-            {
-                "class": label,
-                "confidence": round(
-                    confidence,
-                    3,
-                ),
-            }
-        )
-
-
-        # ----------------------------------------------------
-        # Tracking
-        # ----------------------------------------------------
-
-        if box.id is None:
-            continue
-
-
-        try:
-
-            track_id = int(
-                box.id[0]
-            )
-
-        except Exception:
-
-            continue
-
-
-        # ----------------------------------------------------
-        # Bounding box center
-        # ----------------------------------------------------
-
-        try:
-
-            x1, y1, x2, y2 = (
-                box.xyxy[0]
-            )
-
-            center_x = int(
-                (x1 + x2) / 2
-            )
-
-            center_y = int(
-                (y1 + y2) / 2
-            )
-
-        except Exception:
-
-            continue
-
-
-        # ====================================================
-        # LINE COUNTER
-        # ====================================================
-
-        try:
-
-            line_counter.update(
-                track_id,
-                label,
-                center_y,
-            )
-
-        except Exception as e:
-
-            print(
-                "[WARNING] Camera line "
-                f"counter error: {e}"
-            )
-
-
-        # ====================================================
-        # RESTRICTED ZONE
-        # ====================================================
-
-        if label == "person":
-
-            try:
-
-                inside_zone = (
-                    restricted_zone.contains(
-                        center_x,
-                        center_y,
-                    )
-                )
-
-            except Exception:
-
-                inside_zone = False
-
-
-            if inside_zone:
-
-                intrusion_time = (
-                    time.time()
-                )
-
-                last_time = (
-                    last_intrusion_time.get(
-                        track_id,
-                        0,
-                    )
-                )
-
-
-                if (
-                    intrusion_time -
-                    last_time
-                    >= INTRUSION_COOLDOWN
-                ):
-
-                    timestamp = (
-                        datetime.now()
-                        .strftime(
-                            "%Y%m%d_%H%M%S"
-                        )
-                    )
-
-
-                    filename = (
-                        f"intrusion_"
-                        f"{track_id}_"
-                        f"{timestamp}.jpg"
-                    )
-
-
-                    filepath = os.path.join(
-                        INCIDENT_FOLDER,
-                        filename,
-                    )
-
-
-                    try:
-
-                        cv2.imwrite(
-                            filepath,
-                            frame,
-                        )
-
-                    except Exception as e:
-
-                        print(
-                            "[WARNING] Could not "
-                            f"save intrusion image: {e}"
-                        )
-
-
-                    last_intrusion_time[
-                        track_id
-                    ] = intrusion_time
-
-
-                    try:
-
-                        add_alert(
-                            "🚨 Intrusion Detected! "
-                            f"Screenshot: {filename}"
-                        )
-
-                    except Exception as e:
-
-                        print(
-                            "[WARNING] Alert error: "
-                            f"{e}"
-                        )
-
-
-                    print(
-                        "[ALERT] Intrusion screenshot "
-                        f"saved: {filepath}"
-                    )
-
-
-    # ========================================================
-    # LINE CROSSINGS
-    # ========================================================
-
-    people_crossed = (
-        line_counter.people_crossed
-    )
-
-
-    # ========================================================
-    # ANALYTICS
-    # ========================================================
-
-    analytics = {
-
-        "people":
-            counts["people"],
-
-        "cars":
-            counts["cars"],
-
-        "buses":
-            counts["buses"],
-
-        "motorcycles":
-            counts["motorcycles"],
-
-        "fps":
-            round(
-                fps,
-                2,
-            ),
-
-        "line_crossings":
-            people_crossed,
-
-    }
-
-
-    # ========================================================
-    # UPDATE GLOBAL ANALYTICS
-    # ========================================================
-
-    try:
-
-        update(
-            analytics
-        )
-
-    except Exception as e:
-
-        print(
-            "[WARNING] Analytics update error: "
-            f"{e}"
-        )
-
-
-    # ========================================================
-    # RETURN JSON DATA TO REACT
-    # ========================================================
-
-    return {
-
-        "success": True,
-
-        "people":
-            counts["people"],
-
-        "cars":
-            counts["cars"],
-
-        "buses":
-            counts["buses"],
-
-        "motorcycles":
-            counts["motorcycles"],
-
-        "fps":
-            round(
-                fps,
-                2,
-            ),
-
-        "line_crossings":
-            people_crossed,
-
-        "detections":
-            detections,
-
-    }
+        db.close()
 
 
 # ============================================================
-# PROCESS ONE SERVER VIDEO FRAME
+# PROCESS SERVER VIDEO FRAME
 # ============================================================
 
 def process_frame(frame):
 
     global prev_time
+    global latest_result
+
 
     # ========================================================
     # FPS
@@ -767,9 +378,9 @@ def process_frame(frame):
     current_time = time.time()
 
     elapsed = (
-        current_time -
-        prev_time
+        current_time - prev_time
     )
+
 
     if elapsed > 0:
 
@@ -779,11 +390,12 @@ def process_frame(frame):
 
         fps = 0.0
 
+
     prev_time = current_time
 
 
     # ========================================================
-    # YOLO DETECTION
+    # YOLO DETECTION + TRACKING
     # ========================================================
 
     try:
@@ -802,29 +414,27 @@ def process_frame(frame):
 
 
     if not results:
+
         return None
 
 
     result = results[0]
 
+
     names = result.names
 
 
-    # ========================================================
-    # OBJECT COUNTS
-    # ========================================================
-
     counts = {
-
         "people": 0,
-
         "cars": 0,
-
         "buses": 0,
-
         "motorcycles": 0,
-
     }
+
+
+    detections = []
+
+    intrusion_detected = False
 
 
     # ========================================================
@@ -858,8 +468,7 @@ def process_frame(frame):
         except Exception as e:
 
             print(
-                "[WARNING] Heatmap error: "
-                f"{e}"
+                f"[WARNING] Heatmap error: {e}"
             )
 
 
@@ -877,10 +486,18 @@ def process_frame(frame):
 
             label = names[cls]
 
+            confidence = float(
+                box.conf[0]
+            )
+
         except Exception:
 
             continue
 
+
+        # ----------------------------------------------------
+        # COUNTS
+        # ----------------------------------------------------
 
         if label == "person":
 
@@ -899,62 +516,66 @@ def process_frame(frame):
             counts["motorcycles"] += 1
 
 
-        if box.id is None:
-            continue
-
+        # ----------------------------------------------------
+        # BOUNDING BOX
+        # ----------------------------------------------------
 
         try:
 
-            track_id = int(
-                box.id[0]
-            )
-
             x1, y1, x2, y2 = (
-                box.xyxy[0]
+                box.xyxy[0].tolist()
             )
 
-            center_x = int(
-                (x1 + x2) / 2
-            )
-
-            center_y = int(
-                (y1 + y2) / 2
-            )
+            x1 = int(x1)
+            y1 = int(y1)
+            x2 = int(x2)
+            y2 = int(y2)
 
         except Exception:
 
             continue
 
 
+        # ----------------------------------------------------
+        # TRACK ID
+        # ----------------------------------------------------
+
+        track_id = None
+
+        if box.id is not None:
+
+            try:
+
+                track_id = int(
+                    box.id[0]
+                )
+
+            except Exception:
+
+                track_id = None
+
+
+        center_x = int(
+            (x1 + x2) / 2
+        )
+
+        center_y = int(
+            (y1 + y2) / 2
+        )
+
+
         # ====================================================
-        # LINE COUNTER
+        # INTRUSION
         # ====================================================
 
-        try:
+        is_intrusion = False
 
-            line_counter.update(
-                track_id,
-                label,
-                center_y,
-            )
-
-        except Exception as e:
-
-            print(
-                "[WARNING] Line counter error: "
-                f"{e}"
-            )
-
-
-        # ====================================================
-        # RESTRICTED ZONE
-        # ====================================================
 
         if label == "person":
 
             try:
 
-                inside_zone = (
+                is_intrusion = (
                     restricted_zone.contains(
                         center_x,
                         center_y,
@@ -963,12 +584,17 @@ def process_frame(frame):
 
             except Exception:
 
-                inside_zone = False
+                is_intrusion = False
 
 
-            if inside_zone:
+            if is_intrusion:
 
-                intrusion_time = time.time()
+                intrusion_detected = True
+
+                current_intrusion_time = (
+                    time.time()
+                )
+
 
                 last_time = (
                     last_intrusion_time.get(
@@ -979,8 +605,12 @@ def process_frame(frame):
 
 
                 if (
-                    intrusion_time -
-                    last_time
+                    track_id is not None
+                    and
+                    (
+                        current_intrusion_time
+                        - last_time
+                    )
                     >= INTRUSION_COOLDOWN
                 ):
 
@@ -1015,14 +645,15 @@ def process_frame(frame):
                     except Exception as e:
 
                         print(
-                            "[WARNING] Could not "
-                            f"save intrusion image: {e}"
+                            "[WARNING] "
+                            "Could not save intrusion image:",
+                            e,
                         )
 
 
                     last_intrusion_time[
                         track_id
-                    ] = intrusion_time
+                    ] = current_intrusion_time
 
 
                     try:
@@ -1035,49 +666,88 @@ def process_frame(frame):
                     except Exception as e:
 
                         print(
-                            "[WARNING] Alert error: "
-                            f"{e}"
+                            "[WARNING] Alert error:",
+                            e,
                         )
 
 
+                    print(
+                        "[ALERT] Intrusion screenshot saved:",
+                        filepath,
+                    )
+
+
+        # ====================================================
+        # LINE COUNTER
+        # ====================================================
+
+        if track_id is not None:
+
+            try:
+
+                line_counter.update(
+                    track_id,
+                    label,
+                    center_y,
+                )
+
+            except Exception as e:
+
+                print(
+                    "[WARNING] "
+                    "Line counter error:",
+                    e,
+                )
+
+
+        detections.append(
+            {
+                "class": label,
+                "confidence": round(
+                    confidence,
+                    3,
+                ),
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "track_id": track_id,
+                "intrusion": is_intrusion,
+            }
+        )
+
+
     # ========================================================
-    # ANALYTICS
+    # LINE CROSSINGS
     # ========================================================
 
     people_crossed = (
         line_counter.people_crossed
     )
 
+
     cars_crossed = (
         line_counter.cars_crossed
     )
 
 
+    # ========================================================
+    # ANALYTICS
+    # ========================================================
+
     analytics = {
-
-        "people":
-            counts["people"],
-
-        "cars":
-            counts["cars"],
-
-        "buses":
-            counts["buses"],
-
-        "motorcycles":
-            counts["motorcycles"],
-
-        "fps":
-            round(
-                fps,
-                2,
-            ),
-
-        "line_crossings":
-            people_crossed,
-
+        "people": counts["people"],
+        "cars": counts["cars"],
+        "buses": counts["buses"],
+        "motorcycles": counts["motorcycles"],
+        "fps": round(fps, 2),
+        "line_crossings": people_crossed,
     }
 
+
+    # ========================================================
+    # UPDATE LIVE ANALYTICS
+    # ========================================================
 
     try:
 
@@ -1088,8 +758,8 @@ def process_frame(frame):
     except Exception as e:
 
         print(
-            "[WARNING] Analytics update error: "
-            f"{e}"
+            "[WARNING] Analytics update error:",
+            e,
         )
 
 
@@ -1097,29 +767,13 @@ def process_frame(frame):
     # DATABASE
     # ========================================================
 
-    db = SessionLocal()
-
-    try:
-
-        save_record(
-            db,
-            analytics,
-        )
-
-    except Exception as e:
-
-        print(
-            "[WARNING] Database error: "
-            f"{e}"
-        )
-
-    finally:
-
-        db.close()
+    save_analytics_record(
+        analytics
+    )
 
 
     # ========================================================
-    # ALERTS
+    # CROWD ALERT
     # ========================================================
 
     if counts["people"] >= 3:
@@ -1134,10 +788,14 @@ def process_frame(frame):
         except Exception as e:
 
             print(
-                "[WARNING] Crowd alert error: "
-                f"{e}"
+                "[WARNING] Crowd alert error:",
+                e,
             )
 
+
+    # ========================================================
+    # TRAFFIC ALERT
+    # ========================================================
 
     if counts["cars"] >= 5:
 
@@ -1151,9 +809,32 @@ def process_frame(frame):
         except Exception as e:
 
             print(
-                "[WARNING] Traffic alert error: "
-                f"{e}"
+                "[WARNING] Traffic alert error:",
+                e,
             )
+
+
+    # ========================================================
+    # UPDATE LATEST RESULT
+    # ========================================================
+
+    latest_result_data = {
+        "people": counts["people"],
+        "cars": counts["cars"],
+        "buses": counts["buses"],
+        "motorcycles": counts["motorcycles"],
+        "fps": round(fps, 2),
+        "line_crossings": people_crossed,
+        "detections": detections,
+        "intrusion": intrusion_detected,
+    }
+
+
+    with latest_result_lock:
+
+        latest_result = (
+            latest_result_data
+        )
 
 
     # ========================================================
@@ -1182,8 +863,8 @@ def process_frame(frame):
     except Exception as e:
 
         print(
-            "[WARNING] Heatmap drawing error: "
-            f"{e}"
+            "[WARNING] Heatmap drawing error:",
+            e,
         )
 
 
@@ -1200,8 +881,9 @@ def process_frame(frame):
     except Exception as e:
 
         print(
-            "[WARNING] Restricted zone "
-            f"drawing error: {e}"
+            "[WARNING] "
+            "Restricted zone drawing error:",
+            e,
         )
 
 
@@ -1213,80 +895,75 @@ def process_frame(frame):
 
         cv2.line(
             annotated,
-
             (
                 0,
                 line_counter.line_y,
             ),
-
             (
                 annotated.shape[1],
                 line_counter.line_y,
             ),
-
             (0, 255, 255),
-
             3,
         )
 
-    except Exception:
-        pass
+    except Exception as e:
+
+        print(
+            "[WARNING] "
+            "Line drawing error:",
+            e,
+        )
 
 
     # ========================================================
-    # DISPLAY INFORMATION
+    # PEOPLE CROSSED
     # ========================================================
 
     cv2.putText(
         annotated,
-
         f"People Crossed: {people_crossed}",
-
         (20, 40),
-
         cv2.FONT_HERSHEY_SIMPLEX,
-
         0.8,
-
         (0, 255, 0),
-
         2,
     )
 
 
+    # ========================================================
+    # CARS CROSSED
+    # ========================================================
+
     cv2.putText(
         annotated,
-
         f"Cars Crossed: {cars_crossed}",
-
         (20, 75),
-
         cv2.FONT_HERSHEY_SIMPLEX,
-
         0.8,
-
         (255, 0, 0),
-
         2,
     )
 
+
+    # ========================================================
+    # FPS
+    # ========================================================
 
     cv2.putText(
         annotated,
-
         f"FPS: {round(fps, 1)}",
-
         (20, 110),
-
         cv2.FONT_HERSHEY_SIMPLEX,
-
         0.8,
-
         (255, 255, 255),
-
         2,
     )
 
+
+    # ========================================================
+    # SOURCE LABEL
+    # ========================================================
 
     source_label = (
         "LIVE WEBCAM"
@@ -1297,23 +974,37 @@ def process_frame(frame):
 
     cv2.putText(
         annotated,
-
         source_label,
-
         (20, 145),
-
         cv2.FONT_HERSHEY_SIMPLEX,
-
         0.7,
-
         (0, 255, 255),
-
         2,
     )
 
 
     # ========================================================
-    # JPEG ENCODING
+    # INTRUSION LABEL
+    # ========================================================
+
+    if intrusion_detected:
+
+        cv2.putText(
+            annotated,
+            "!!! INTRUSION DETECTED !!!",
+            (
+                20,
+                annotated.shape[0] - 30,
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            (0, 0, 255),
+            3,
+        )
+
+
+    # ========================================================
+    # JPEG
     # ========================================================
 
     success, buffer = cv2.imencode(
@@ -1323,10 +1014,443 @@ def process_frame(frame):
 
 
     if not success:
+
         return None
 
 
     return buffer.tobytes()
+
+
+# ============================================================
+# PROCESS REACT LIVE CAMERA FRAME
+# ============================================================
+
+def process_camera_frame(frame):
+
+    """
+    Process a frame coming directly from the React laptop
+    webcam.
+
+    Unlike process_frame(), this function returns JSON-safe
+    detection coordinates so the React UI can draw bounding
+    boxes over the browser camera.
+    """
+
+    start_time = time.time()
+
+
+    # ========================================================
+    # YOLO
+    # ========================================================
+
+    try:
+
+        results = detect_and_track(
+            frame
+        )
+
+    except Exception as e:
+
+        print(
+            "[ERROR] Camera YOLO error:",
+            e,
+        )
+
+        return {
+            "people": 0,
+            "cars": 0,
+            "buses": 0,
+            "motorcycles": 0,
+            "fps": 0.0,
+            "line_crossings": 0,
+            "detections": [],
+            "intrusion": False,
+        }
+
+
+    if not results:
+
+        return {
+            "people": 0,
+            "cars": 0,
+            "buses": 0,
+            "motorcycles": 0,
+            "fps": 0.0,
+            "line_crossings": 0,
+            "detections": [],
+            "intrusion": False,
+        }
+
+
+    result = results[0]
+
+    names = result.names
+
+
+    # ========================================================
+    # COUNTS
+    # ========================================================
+
+    counts = {
+        "people": 0,
+        "cars": 0,
+        "buses": 0,
+        "motorcycles": 0,
+    }
+
+
+    detections = []
+
+    intrusion_detected = False
+
+
+    # ========================================================
+    # PROCESS OBJECTS
+    # ========================================================
+
+    for box in result.boxes:
+
+        try:
+
+            cls = int(
+                box.cls[0]
+            )
+
+            label = names[cls]
+
+            confidence = float(
+                box.conf[0]
+            )
+
+        except Exception:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # COUNTS
+        # ----------------------------------------------------
+
+        if label == "person":
+
+            counts["people"] += 1
+
+        elif label == "car":
+
+            counts["cars"] += 1
+
+        elif label == "bus":
+
+            counts["buses"] += 1
+
+        elif label == "motorcycle":
+
+            counts["motorcycles"] += 1
+
+
+        # ----------------------------------------------------
+        # BOX
+        # ----------------------------------------------------
+
+        try:
+
+            x1, y1, x2, y2 = (
+                box.xyxy[0].tolist()
+            )
+
+            x1 = int(x1)
+            y1 = int(y1)
+            x2 = int(x2)
+            y2 = int(y2)
+
+        except Exception:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # TRACK ID
+        # ----------------------------------------------------
+
+        track_id = None
+
+        if box.id is not None:
+
+            try:
+
+                track_id = int(
+                    box.id[0]
+                )
+
+            except Exception:
+
+                track_id = None
+
+
+        # ----------------------------------------------------
+        # CENTER
+        # ----------------------------------------------------
+
+        center_x = int(
+            (x1 + x2) / 2
+        )
+
+        center_y = int(
+            (y1 + y2) / 2
+        )
+
+
+        # ====================================================
+        # INTRUSION
+        # ====================================================
+
+        is_intrusion = False
+
+
+        if label == "person":
+
+            try:
+
+                is_intrusion = (
+                    restricted_zone.contains(
+                        center_x,
+                        center_y,
+                    )
+                )
+
+            except Exception:
+
+                is_intrusion = False
+
+
+            if is_intrusion:
+
+                intrusion_detected = True
+
+                current_time = time.time()
+
+                last_time = (
+                    last_intrusion_time.get(
+                        track_id,
+                        0,
+                    )
+                )
+
+
+                if (
+                    track_id is not None
+                    and
+                    (
+                        current_time
+                        - last_time
+                    )
+                    >= INTRUSION_COOLDOWN
+                ):
+
+                    timestamp = (
+                        datetime.now()
+                        .strftime(
+                            "%Y%m%d_%H%M%S"
+                        )
+                    )
+
+
+                    filename = (
+                        f"intrusion_"
+                        f"{track_id}_"
+                        f"{timestamp}.jpg"
+                    )
+
+
+                    filepath = os.path.join(
+                        INCIDENT_FOLDER,
+                        filename,
+                    )
+
+
+                    try:
+
+                        cv2.imwrite(
+                            filepath,
+                            frame,
+                        )
+
+                    except Exception as e:
+
+                        print(
+                            "[WARNING] "
+                            "Intrusion screenshot error:",
+                            e,
+                        )
+
+
+                    last_intrusion_time[
+                        track_id
+                    ] = current_time
+
+
+                    try:
+
+                        add_alert(
+                            "🚨 Intrusion Detected! "
+                            f"Screenshot: {filename}"
+                        )
+
+                    except Exception as e:
+
+                        print(
+                            "[WARNING] Alert error:",
+                            e,
+                        )
+
+
+                    print(
+                        "[ALERT] Live camera intrusion:",
+                        filepath,
+                    )
+
+
+        # ====================================================
+        # LINE COUNTER
+        # ====================================================
+
+        if track_id is not None:
+
+            try:
+
+                line_counter.update(
+                    track_id,
+                    label,
+                    center_y,
+                )
+
+            except Exception as e:
+
+                print(
+                    "[WARNING] "
+                    "Camera line counter error:",
+                    e,
+                )
+
+
+        # ====================================================
+        # FRONTEND DETECTION
+        # ====================================================
+
+        detections.append(
+            {
+                "class": label,
+                "confidence": round(
+                    confidence,
+                    3,
+                ),
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "track_id": track_id,
+                "intrusion": is_intrusion,
+            }
+        )
+
+
+    # ========================================================
+    # FPS
+    # ========================================================
+
+    elapsed = (
+        time.time() - start_time
+    )
+
+
+    fps = (
+        1 / elapsed
+        if elapsed > 0
+        else 0.0
+    )
+
+
+    # ========================================================
+    # LINE CROSSINGS
+    # ========================================================
+
+    people_crossed = (
+        line_counter.people_crossed
+    )
+
+
+    # ========================================================
+    # ANALYTICS
+    # ========================================================
+
+    analytics = {
+        "people": counts["people"],
+        "cars": counts["cars"],
+        "buses": counts["buses"],
+        "motorcycles": counts["motorcycles"],
+        "fps": round(fps, 2),
+        "line_crossings": people_crossed,
+    }
+
+
+    # ========================================================
+    # UPDATE ANALYTICS SERVICE
+    # ========================================================
+
+    try:
+
+        update(
+            analytics
+        )
+
+    except Exception as e:
+
+        print(
+            "[WARNING] "
+            "Camera analytics update error:",
+            e,
+        )
+
+
+    # ========================================================
+    # SAVE TO DATABASE
+    # ========================================================
+
+    save_analytics_record(
+        analytics
+    )
+
+
+    # ========================================================
+    # UPDATE GLOBAL RESULT
+    # ========================================================
+
+    global latest_result
+
+    latest_result_data = {
+        "people": counts["people"],
+        "cars": counts["cars"],
+        "buses": counts["buses"],
+        "motorcycles": counts["motorcycles"],
+        "fps": round(fps, 2),
+        "line_crossings": people_crossed,
+        "detections": detections,
+        "intrusion": intrusion_detected,
+    }
+
+
+    with latest_result_lock:
+
+        latest_result = (
+            latest_result_data
+        )
+
+
+    # ========================================================
+    # RETURN JSON
+    # ========================================================
+
+    return latest_result_data
 
 
 # ============================================================
@@ -1337,12 +1461,17 @@ def generate_frames():
 
     global camera
 
+
     print(
         "[INFO] VisionEdge frame generator started."
     )
 
 
     while True:
+
+        # ====================================================
+        # READ
+        # ====================================================
 
         success, frame = read_frame()
 
@@ -1360,12 +1489,14 @@ def generate_frames():
                     "Restarting..."
                 )
 
+
                 with camera_lock:
 
                     camera.set(
                         cv2.CAP_PROP_POS_FRAMES,
                         0,
                     )
+
 
                 time.sleep(
                     0.05
@@ -1375,13 +1506,14 @@ def generate_frames():
 
 
             # =================================================
-            # CAMERA FAILURE
+            # WEBCAM / REMOTE FAILURE
             # =================================================
 
             print(
                 "[WARNING] Could not read "
                 "frame from video source."
             )
+
 
             time.sleep(
                 0.1
@@ -1399,7 +1531,7 @@ def generate_frames():
 
 
         # ====================================================
-        # PROCESS FRAME
+        # PROCESS
         # ====================================================
 
         frame_bytes = process_frame(
@@ -1408,21 +1540,26 @@ def generate_frames():
 
 
         if frame_bytes is None:
+
             continue
 
 
         # ====================================================
-        # MJPEG STREAM
+        # MJPEG
         # ====================================================
 
         yield (
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n"
             b"Content-Length: "
-            + str(
+            +
+            str(
                 len(frame_bytes)
             ).encode()
-            + b"\r\n\r\n"
-            + frame_bytes
-            + b"\r\n"
+            +
+            b"\r\n\r\n"
+            +
+            frame_bytes
+            +
+            b"\r\n"
         )

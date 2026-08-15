@@ -4,6 +4,7 @@ from fastapi import (
     File,
     HTTPException,
 )
+
 from fastapi.responses import StreamingResponse
 
 import cv2
@@ -24,6 +25,9 @@ router = APIRouter()
 
 @router.get("/stream")
 def video_stream():
+    """
+    Stream processed VisionEdge video using MJPEG.
+    """
 
     return StreamingResponse(
         generate_frames(),
@@ -42,10 +46,12 @@ def video_stream():
 async def camera_frame(
     file: UploadFile = File(...)
 ):
-
     """
     Receive one JPEG frame from the React laptop webcam
     and process it using VisionEdge AI.
+
+    Returns detection coordinates so the React frontend
+    can draw bounding boxes over the live camera.
     """
 
     try:
@@ -95,6 +101,20 @@ async def camera_frame(
         result = process_camera_frame(
             frame
         )
+
+
+        if result is None:
+
+            return {
+                "people": 0,
+                "cars": 0,
+                "buses": 0,
+                "motorcycles": 0,
+                "fps": 0.0,
+                "line_crossings": 0,
+                "detections": [],
+                "intrusion": False,
+            }
 
 
         return result

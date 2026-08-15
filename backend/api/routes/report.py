@@ -1,63 +1,594 @@
+import csv
+import io
+import os
+
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+
+from fastapi.responses import (
+    FileResponse,
+    StreamingResponse,
+)
+
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer,
+)
+
 from reportlab.lib import colors
+
+from reportlab.lib.pagesizes import A4
+
+from reportlab.lib.styles import (
+    getSampleStyleSheet,
+)
+
 from sqlalchemy.orm import Session
 
-from backend.database.database import SessionLocal
-from backend.database.models import AnalyticsRecord
+from backend.database.database import (
+    SessionLocal,
+)
+
+from backend.database.models import (
+    AnalyticsRecord,
+)
+
 
 router = APIRouter()
 
 
-@router.get("/report")
-def generate_report():
+# ============================================================
+# REPORT DIRECTORY
+# ============================================================
+
+BASE_DIR = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+    )
+)
+
+
+REPORT_FOLDER = os.path.join(
+    BASE_DIR,
+    "assets",
+    "reports",
+)
+
+
+os.makedirs(
+    REPORT_FOLDER,
+    exist_ok=True,
+)
+
+
+# ============================================================
+# GET ANALYTICS
+# ============================================================
+
+def get_analytics_records():
 
     db: Session = SessionLocal()
 
-    records = db.query(AnalyticsRecord).all()
+    try:
 
-    db.close()
+        records = (
+            db.query(
+                AnalyticsRecord
+            )
+            .order_by(
+                AnalyticsRecord.created_at.asc()
+            )
+            .all()
+        )
 
-    filename = "visionedge_report.pdf"
+        return records
 
-    doc = SimpleDocTemplate(filename)
+    finally:
 
-    data = [[
-        "Time",
-        "People",
-        "Cars",
-        "Buses",
-        "Motorcycles",
-        "FPS"
-    ]]
+        db.close()
 
-    for r in records:
-        data.append([
-            str(r.created_at),
-            r.people,
-            r.cars,
-            r.buses,
-            r.motorcycles,
-            round(r.fps, 2),
-        ])
 
-    table = Table(data)
+# ============================================================
+# CSV REPORT
+# ============================================================
 
-    table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.darkblue),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 1, colors.black),
-            ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ])
+@router.get("/export/csv")
+def export_csv():
+
+    records = (
+        get_analytics_records()
     )
 
-    doc.build([table])
+
+    output = io.StringIO()
+
+    writer = csv.writer(
+        output
+    )
+
+
+    # --------------------------------------------------------
+    # HEADER
+    # --------------------------------------------------------
+
+    writer.writerow(
+        [
+            "Time",
+            "People",
+            "Cars",
+            "Buses",
+            "Motorcycles",
+            "FPS",
+        ]
+    )
+
+
+    # --------------------------------------------------------
+    # DATA
+    # --------------------------------------------------------
+
+    for record in records:
+
+        writer.writerow(
+            [
+                str(
+                    record.created_at
+                ),
+
+                record.people,
+
+                record.cars,
+
+                record.buses,
+
+                record.motorcycles,
+
+                round(
+                    float(
+                        record.fps or 0
+                    ),
+                    2,
+                ),
+            ]
+        )
+
+
+    output.seek(0)
+
+
+    return StreamingResponse(
+        iter(
+            [
+                output.getvalue()
+            ]
+        ),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition":
+                "attachment; "
+                'filename="visionedge_analytics.csv"'
+        },
+    )
+
+
+# ============================================================
+# PDF REPORT
+# ============================================================
+
+@router.get("/report")
+def generate_report():
+
+    records = (
+        get_analytics_records()
+    )
+
+
+    filename = os.path.join(
+        REPORT_FOLDER,
+        "visionedge_report.pdf",
+    )
+
+
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30,
+    )
+
+
+    styles = (
+        getSampleStyleSheet()
+    )
+
+
+    elements = []
+
+
+    # --------------------------------------------------------
+    # TITLE
+    # --------------------------------------------------------
+
+    elements.append(
+        Paragraph(
+            "VisionEdge Security & Analytics Report",
+            styles["Title"],
+        )
+    )
+
+
+    elements.append(
+        Spacer(
+            1,
+            12,
+        )
+    )
+
+
+    elements.append(
+        Paragraph(
+            (
+                "AI-powered video monitoring "
+                "analytics generated by VisionEdge."
+            ),
+            styles["Normal"],
+        )
+    )
+
+
+    elements.append(
+        Spacer(
+            1,
+            18,
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # SUMMARY
+    # --------------------------------------------------------
+
+    total_records = len(
+        records
+    )
+
+
+    total_people = sum(
+        int(
+            record.people or 0
+        )
+        for record in records
+    )
+
+
+    total_cars = sum(
+        int(
+            record.cars or 0
+        )
+        for record in records
+    )
+
+
+    total_buses = sum(
+        int(
+            record.buses or 0
+        )
+        for record in records
+    )
+
+
+    total_motorcycles = sum(
+        int(
+            record.motorcycles or 0
+        )
+        for record in records
+    )
+
+
+    summary_data = [
+
+        [
+            "Metric",
+            "Value",
+        ],
+
+        [
+            "Analytics Records",
+            total_records,
+        ],
+
+        [
+            "Total People Detections",
+            total_people,
+        ],
+
+        [
+            "Total Car Detections",
+            total_cars,
+        ],
+
+        [
+            "Total Bus Detections",
+            total_buses,
+        ],
+
+        [
+            "Total Motorcycle Detections",
+            total_motorcycles,
+        ],
+    ]
+
+
+    summary_table = Table(
+        summary_data,
+        colWidths=[
+            280,
+            180,
+        ],
+    )
+
+
+    summary_table.setStyle(
+        TableStyle(
+            [
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.darkblue,
+                ),
+
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white,
+                ),
+
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.5,
+                    colors.grey,
+                ),
+
+                (
+                    "ALIGN",
+                    (1, 0),
+                    (-1, -1),
+                    "CENTER",
+                ),
+
+                (
+                    "BACKGROUND",
+                    (0, 1),
+                    (-1, -1),
+                    colors.whitesmoke,
+                ),
+
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, 0),
+                    8,
+                ),
+
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, 0),
+                    8,
+                ),
+            ]
+        )
+    )
+
+
+    elements.append(
+        summary_table
+    )
+
+
+    elements.append(
+        Spacer(
+            1,
+            25,
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # DETAILED ANALYTICS
+    # --------------------------------------------------------
+
+    elements.append(
+        Paragraph(
+            "Detailed Analytics",
+            styles["Heading2"],
+        )
+    )
+
+
+    elements.append(
+        Spacer(
+            1,
+            10,
+        )
+    )
+
+
+    data = [
+        [
+            "Time",
+            "People",
+            "Cars",
+            "Buses",
+            "Motorcycles",
+            "FPS",
+        ]
+    ]
+
+
+    for record in records:
+
+        data.append(
+            [
+                str(
+                    record.created_at
+                ),
+
+                record.people,
+
+                record.cars,
+
+                record.buses,
+
+                record.motorcycles,
+
+                round(
+                    float(
+                        record.fps or 0
+                    ),
+                    2,
+                ),
+            ]
+        )
+
+
+    # --------------------------------------------------------
+    # EMPTY DATABASE
+    # --------------------------------------------------------
+
+    if not records:
+
+        data.append(
+            [
+                "No analytics data available",
+                "-",
+                "-",
+                "-",
+                "-",
+                "-",
+            ]
+        )
+
+
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[
+            105,
+            60,
+            60,
+            60,
+            75,
+            50,
+        ],
+    )
+
+
+    table.setStyle(
+        TableStyle(
+            [
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.darkblue,
+                ),
+
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white,
+                ),
+
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.5,
+                    colors.grey,
+                ),
+
+                (
+                    "ALIGN",
+                    (1, 1),
+                    (-1, -1),
+                    "CENTER",
+                ),
+
+                (
+                    "BACKGROUND",
+                    (0, 1),
+                    (-1, -1),
+                    colors.whitesmoke,
+                ),
+
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+
+                (
+                    "FONTSIZE",
+                    (0, 0),
+                    (-1, -1),
+                    7,
+                ),
+
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, 0),
+                    7,
+                ),
+
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, 0),
+                    7,
+                ),
+            ]
+        )
+    )
+
+
+    elements.append(
+        table
+    )
+
+
+    # --------------------------------------------------------
+    # BUILD
+    # --------------------------------------------------------
+
+    doc.build(
+        elements
+    )
+
 
     return FileResponse(
         filename,
         media_type="application/pdf",
-        filename=filename,
+        filename="visionedge_report.pdf",
     )
