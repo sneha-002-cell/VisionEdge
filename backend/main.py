@@ -1,13 +1,10 @@
 import os
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
-
-from backend.database.database import engine
-from backend.database.models import Base
+from backend.database.database import engine, SessionLocal
+from backend.database.models import Base, User
 
 from backend.api.routes.detection import router as detection_router
 from backend.api.routes.video import router as video_router
@@ -17,6 +14,7 @@ from backend.api.routes.alerts import router as alert_router
 from backend.api.routes.export import router as export_router
 from backend.api.routes.report import router as report_router
 from backend.auth.auth import router as auth_router
+from backend.auth.security import hash_password
 
 
 app = FastAPI(
@@ -26,34 +24,92 @@ app = FastAPI(
 )
 
 
-# -----------------------------
-# Database
-# -----------------------------
+# --------------------------------------------------
+# Database initialization
+# --------------------------------------------------
 
 Base.metadata.create_all(bind=engine)
 
 
-# -----------------------------
-# CORS
-# -----------------------------
+# --------------------------------------------------
+# Demo user initialization
+# --------------------------------------------------
 
-CORS_ORIGINS = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:5173"
-).split(",")
+def create_demo_user():
+    db = SessionLocal()
+
+    try:
+        demo_email = os.getenv(
+            "DEMO_EMAIL",
+            "demo@visionedge.ai"
+        )
+
+        demo_password = os.getenv(
+            "DEMO_PASSWORD",
+            "VisionEdgeDemo@2026"
+        )
+
+        demo_username = os.getenv(
+            "DEMO_USERNAME",
+            "VisionEdge Demo"
+        )
+
+        existing_user = (
+            db.query(User)
+            .filter(User.email == demo_email)
+            .first()
+        )
+
+        if existing_user:
+            print("Demo user already exists.")
+            return
+
+        demo_user = User(
+            username=demo_username,
+            email=demo_email,
+            password=hash_password(demo_password),
+        )
+
+        db.add(demo_user)
+        db.commit()
+
+        print("========================================")
+        print("VisionEdge demo user created")
+        print(f"Email: {demo_email}")
+        print("Password: [hidden]")
+        print("========================================")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Could not create demo user: {e}")
+
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def startup_event():
+    create_demo_user()
+
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=[
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# -----------------------------
-# Routes
-# -----------------------------
+# --------------------------------------------------
+# API Routes
+# --------------------------------------------------
 
 app.include_router(detection_router)
 app.include_router(video_router)
@@ -65,9 +121,9 @@ app.include_router(report_router)
 app.include_router(auth_router)
 
 
-# -----------------------------
-# Root
-# -----------------------------
+# --------------------------------------------------
+# Basic endpoints
+# --------------------------------------------------
 
 @app.get("/")
 def home():
@@ -75,10 +131,6 @@ def home():
         "message": "Welcome to VisionEdge API"
     }
 
-
-# -----------------------------
-# Health Check
-# -----------------------------
 
 @app.get("/health")
 def health():
