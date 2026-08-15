@@ -1,41 +1,168 @@
-from fastapi import APIRouter, UploadFile, File
-from ultralytics import YOLO
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+)
+
 import cv2
 import numpy as np
 
+from backend.core.tracker import detect_and_track
+
+
 router = APIRouter()
 
-# Load YOLO model only once
-model = YOLO("yolov8n.pt")
 
+# ============================================================
+# IMAGE DETECTION
+# ============================================================
 
 @router.post("/detect-image")
-async def detect_image(file: UploadFile = File(...)):
-    # Read uploaded image
-    contents = await file.read()
+async def detect_image(
+    file: UploadFile = File(...)
+):
 
-    # Convert bytes to NumPy array
-    np_array = np.frombuffer(contents, np.uint8)
+    """
+    Upload an image and run VisionEdge object detection.
+    """
 
-    # Decode image
-    image = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+    try:
 
-    # Run YOLO detection
-    results = model(image)
+        # ----------------------------------------------------
+        # Read uploaded image
+        # ----------------------------------------------------
 
-    detections = []
+        contents = await file.read()
 
-    for box in results[0].boxes:
-        class_id = int(box.cls[0])
-        confidence = float(box.conf[0])
 
-        detections.append({
-            "class": model.names[class_id],
-            "confidence": round(confidence, 3)
-        })
+        if not contents:
 
-    return {
-        "filename": file.filename,
-        "total_objects": len(detections),
-        "detections": detections
-    }
+            raise HTTPException(
+                status_code=400,
+                detail="Empty image file.",
+            )
+
+
+        # ----------------------------------------------------
+        # Convert to NumPy
+        # ----------------------------------------------------
+
+        np_array = np.frombuffer(
+            contents,
+            np.uint8,
+        )
+
+
+        # ----------------------------------------------------
+        # Decode image
+        # ----------------------------------------------------
+
+        image = cv2.imdecode(
+            np_array,
+            cv2.IMREAD_COLOR,
+        )
+
+
+        if image is None:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Could not decode image.",
+            )
+
+
+        # ----------------------------------------------------
+        # VisionEdge YOLO
+        # ----------------------------------------------------
+
+        results = detect_and_track(
+            image
+        )
+
+
+        if not results:
+
+            return {
+                "filename": file.filename,
+                "total_objects": 0,
+                "detections": [],
+            }
+
+
+        result = results[0]
+
+        names = result.names
+
+
+        # ----------------------------------------------------
+        # Build detection response
+        # ----------------------------------------------------
+
+        detections = []
+
+
+        for box in result.boxes:
+
+            try:
+
+                class_id = int(
+                    box.cls[0]
+                )
+
+                confidence = float(
+                    box.conf[0]
+                )
+
+                label = names[class_id]
+
+
+                detections.append(
+                    {
+                        "class": label,
+                        "confidence": round(
+                            confidence,
+                            3,
+                        ),
+                    }
+                )
+
+            except Exception:
+
+                continue
+
+
+        # ----------------------------------------------------
+        # Return response
+        # ----------------------------------------------------
+
+        return {
+
+            "filename":
+                file.filename,
+
+            "total_objects":
+                len(detections),
+
+            "detections":
+                detections,
+
+        }
+
+
+    except HTTPException:
+
+        raise
+
+
+    except Exception as e:
+
+        print(
+            "[ERROR] Image detection error:",
+            e,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )

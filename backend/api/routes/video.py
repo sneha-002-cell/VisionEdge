@@ -1,5 +1,13 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+)
 from fastapi.responses import StreamingResponse
+
+import cv2
+import numpy as np
 
 from backend.api.services.video_service import (
     generate_frames,
@@ -11,11 +19,11 @@ router = APIRouter()
 
 
 # ============================================================
-# PRERECORDED VIDEO STREAM
+# SERVER VIDEO STREAM
 # ============================================================
 
-@router.get("/video")
-def video_feed():
+@router.get("/stream")
+def video_stream():
 
     return StreamingResponse(
         generate_frames(),
@@ -27,49 +35,84 @@ def video_feed():
 
 
 # ============================================================
-# LAPTOP CAMERA FRAME
+# CAMERA FRAME AI PROCESSING
 # ============================================================
 
 @router.post("/camera/frame")
-async def process_camera_frame_route(
+async def camera_frame(
     file: UploadFile = File(...)
 ):
 
-    frame_bytes = await file.read()
-
-
-    if not frame_bytes:
-
-        return {
-            "success": False,
-            "message": "Empty camera frame.",
-        }
-
+    """
+    Receive one JPEG frame from the React laptop webcam
+    and process it using VisionEdge AI.
+    """
 
     try:
 
-        processed_frame, analytics = (
-            process_camera_frame(
-                frame_bytes
+        contents = await file.read()
+
+        if not contents:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Empty camera frame.",
             )
+
+
+        # ----------------------------------------------------
+        # Convert uploaded bytes to NumPy
+        # ----------------------------------------------------
+
+        np_array = np.frombuffer(
+            contents,
+            np.uint8,
         )
 
 
-        return {
-            "success": True,
-            "analytics": analytics,
-        }
+        # ----------------------------------------------------
+        # Decode JPEG
+        # ----------------------------------------------------
+
+        frame = cv2.imdecode(
+            np_array,
+            cv2.IMREAD_COLOR,
+        )
 
 
-    except Exception as error:
+        if frame is None:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Could not decode camera frame.",
+            )
+
+
+        # ----------------------------------------------------
+        # VisionEdge AI
+        # ----------------------------------------------------
+
+        result = process_camera_frame(
+            frame
+        )
+
+
+        return result
+
+
+    except HTTPException:
+
+        raise
+
+
+    except Exception as e:
 
         print(
-            "[CAMERA ERROR]",
-            error
+            "[ERROR] /camera/frame error:",
+            e,
         )
 
-
-        return {
-            "success": False,
-            "message": str(error),
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )
