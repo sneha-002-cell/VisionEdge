@@ -3,7 +3,6 @@ import time
 import os
 from datetime import datetime
 
-from ultralytics import YOLO
 
 from backend.api.services.analytics_service import update
 from backend.api.services.alert_service import add_alert
