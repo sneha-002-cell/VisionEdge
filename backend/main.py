@@ -61,7 +61,18 @@ def create_demo_user():
         )
 
         if existing_user:
-            print("Demo user already exists.")
+            # Update the demo user's password
+            existing_user.password = hash_password(demo_password)
+            existing_user.username = demo_username
+
+            db.commit()
+
+            print("========================================")
+            print("VisionEdge demo user password updated")
+            print(f"Email: {demo_email}")
+            print("Password: [hidden]")
+            print("========================================")
+
             return
 
         demo_user = User(
@@ -81,7 +92,7 @@ def create_demo_user():
 
     except Exception as e:
         db.rollback()
-        print(f"Could not create demo user: {e}")
+        print(f"Could not create/update demo user: {e}")
 
     finally:
         db.close()
