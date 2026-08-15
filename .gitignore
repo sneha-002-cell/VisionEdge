@@ -35,3 +35,46 @@ Thumbs.db
 
 # Generated incident screenshots
 assets/incidents/
+# =========================
+# Python
+# =========================
+
+__pycache__/
+*.py[cod]
+*.pyo
+
+# =========================
+# Virtual Environment
+# =========================
+
+.venv/
+venv/
+
+# =========================
+# Environment Variables
+# =========================
+
+.env
+.env.*
+
+# =========================
+# Node / React
+# =========================
+
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# =========================
+# IDE
+# =========================
+
+.vscode/
+.idea/
+
+# =========================
+# OS
+# =========================
+
+.DS_Store
+Thumbs.db
