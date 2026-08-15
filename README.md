@@ -80,21 +80,6 @@ When a person enters a configured restricted zone:
 
 A cooldown mechanism prevents repeated alerts for the same tracked object within a short period.
 
-### 🔥 Heatmap
-
-The system generates a movement heatmap based on detected object locations.
-
-The heatmap helps identify areas with higher activity and movement.
-
-### 🚶 Line Crossing Detection
-
-VisionEdge uses a virtual counting line to detect objects crossing a defined boundary.
-
-The system tracks:
-
-* People crossed
-* Cars crossed
-
 ### 🔔 Alerts
 
 VisionEdge can generate alerts for events such as:
@@ -649,30 +634,6 @@ Check Restricted Zone
               ▼
          Generate Alert
 ```
-
----
-
-# 🔥 Heatmap Processing
-
-The heatmap uses detected bounding boxes to identify areas of movement.
-
-Detected object locations are passed into the heatmap processor and visualized on the annotated video frame.
-
----
-
-# 🚶 Line Crossing
-
-VisionEdge uses a configurable horizontal counting line.
-
-Tracked objects are monitored as they move across the line.
-
-The system maintains counters for:
-
-```text
-People Crossed
-Cars Crossed
-```
-
 ---
 
 # 🗄️ Database
