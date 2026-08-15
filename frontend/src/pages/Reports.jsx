@@ -4,18 +4,20 @@ import {
   Download,
 } from "lucide-react";
 
+const API_URL = "https://visionedge-api.onrender.com";
+
 function Reports() {
 
   const downloadCSV = () => {
     window.open(
-      "http://127.0.0.1:8000/export/csv",
+      `${API_URL}/export/csv`,
       "_blank"
     );
   };
 
   const downloadPDF = () => {
     window.open(
-      "http://127.0.0.1:8000/report",
+      `${API_URL}/report`,
       "_blank"
     );
   };
@@ -42,8 +44,10 @@ function Reports() {
 
       </div>
 
+
       <div className="reports-grid">
 
+        {/* CSV REPORT */}
         <div className="report-card">
 
           <div className="report-icon csv">
@@ -75,6 +79,8 @@ function Reports() {
 
         </div>
 
+
+        {/* PDF REPORT */}
         <div className="report-card">
 
           <div className="report-icon pdf">

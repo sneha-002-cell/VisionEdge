@@ -7,7 +7,7 @@ function VideoPlayer() {
       </h2>
 
       <img
-        src="http://127.0.0.1:8000/video"
+        src={`${import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"}/video`}
         alt="Live Stream"
         className="rounded-xl w-full"
       />
