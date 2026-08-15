@@ -3,8 +3,8 @@
 # Stores live analytics data in memory
 # ============================================
 
-# Shared analytics data
-analytics_data = {
+
+DEFAULT_ANALYTICS = {
     "fps": 0.0,
     "people": 0,
     "cars": 0,
@@ -14,24 +14,34 @@ analytics_data = {
 }
 
 
+# Shared live analytics data
+analytics_data = DEFAULT_ANALYTICS.copy()
+
+
 def update(data: dict):
     """
     Update live analytics values.
     """
+
+    if not isinstance(data, dict):
+        return
+
     analytics_data.update(data)
 
 
 def get():
     """
-    Return current analytics.
+    Return a copy of the current analytics.
     """
+
     return analytics_data.copy()
 
 
 def get_analytics():
     """
-    Compatibility function used by API routes.
+    Compatibility function used by the API route.
     """
+
     return get()
 
 
@@ -39,11 +49,9 @@ def reset():
     """
     Reset analytics to default values.
     """
-    analytics_data.update({
-        "fps": 0.0,
-        "people": 0,
-        "cars": 0,
-        "buses": 0,
-        "motorcycles": 0,
-        "line_crossings": 0,
-    })
+
+    analytics_data.clear()
+
+    analytics_data.update(
+        DEFAULT_ANALYTICS
+    )

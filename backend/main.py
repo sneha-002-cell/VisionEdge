@@ -13,9 +13,14 @@ from backend.api.routes.history import router as history_router
 from backend.api.routes.alerts import router as alert_router
 from backend.api.routes.export import router as export_router
 from backend.api.routes.report import router as report_router
+
 from backend.auth.auth import router as auth_router
 from backend.auth.security import hash_password
 
+
+# ============================================================
+# FASTAPI APPLICATION
+# ============================================================
 
 app = FastAPI(
     title="VisionEdge API",
@@ -24,121 +29,210 @@ app = FastAPI(
 )
 
 
-# --------------------------------------------------
-# Database initialization
-# --------------------------------------------------
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
 
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(
+    bind=engine
+)
 
 
-# --------------------------------------------------
-# Demo user initialization
-# --------------------------------------------------
+# ============================================================
+# DEMO USER
+# ============================================================
 
 def create_demo_user():
+
     db = SessionLocal()
 
     try:
+
         demo_email = os.getenv(
             "DEMO_EMAIL",
-            "demo@visionedge.ai"
+            "demo@visionedge.ai",
         )
 
         demo_password = os.getenv(
             "DEMO_PASSWORD",
-            "VisionEdgeDemo@2026"
+            "VisionEdgeDemo@2026",
         )
 
         demo_username = os.getenv(
             "DEMO_USERNAME",
-            "VisionEdge Demo"
+            "VisionEdge Demo",
         )
+
 
         existing_user = (
             db.query(User)
-            .filter(User.email == demo_email)
+            .filter(
+                User.email == demo_email
+            )
             .first()
         )
 
+
         if existing_user:
-            # Update the demo user's password
-            existing_user.password = hash_password(demo_password)
-            existing_user.username = demo_username
+
+            existing_user.password = (
+                hash_password(
+                    demo_password
+                )
+            )
+
+            existing_user.username = (
+                demo_username
+            )
 
             db.commit()
 
-            print("========================================")
-            print("VisionEdge demo user password updated")
-            print(f"Email: {demo_email}")
-            print("Password: [hidden]")
-            print("========================================")
+            print(
+                "========================================"
+            )
+
+            print(
+                "VisionEdge demo user password updated"
+            )
+
+            print(
+                f"Email: {demo_email}"
+            )
+
+            print(
+                "Password: [hidden]"
+            )
+
+            print(
+                "========================================"
+            )
 
             return
+
 
         demo_user = User(
             username=demo_username,
             email=demo_email,
-            password=hash_password(demo_password),
+            password=hash_password(
+                demo_password
+            ),
         )
 
+
         db.add(demo_user)
+
         db.commit()
 
-        print("========================================")
-        print("VisionEdge demo user created")
-        print(f"Email: {demo_email}")
-        print("Password: [hidden]")
-        print("========================================")
 
-    except Exception as e:
+        print(
+            "========================================"
+        )
+
+        print(
+            "VisionEdge demo user created"
+        )
+
+        print(
+            f"Email: {demo_email}"
+        )
+
+        print(
+            "Password: [hidden]"
+        )
+
+        print(
+            "========================================"
+        )
+
+
+    except Exception as error:
+
         db.rollback()
-        print(f"Could not create/update demo user: {e}")
+
+        print(
+            f"Could not create/update demo user: {error}"
+        )
+
 
     finally:
+
         db.close()
 
 
+# ============================================================
+# STARTUP
+# ============================================================
+
 @app.on_event("startup")
 def startup_event():
+
     create_demo_user()
 
 
-# --------------------------------------------------
+# ============================================================
 # CORS
-# --------------------------------------------------
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
+
     allow_origins=[
         "http://localhost:5173",
         "https://visionedge-frontend-1yd5.onrender.com",
     ],
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"],
 )
 
 
-# --------------------------------------------------
-# API Routes
-# --------------------------------------------------
+# ============================================================
+# API ROUTES
+# ============================================================
 
-app.include_router(detection_router)
-app.include_router(video_router)
-app.include_router(analytics_router)
-app.include_router(history_router)
-app.include_router(alert_router)
-app.include_router(export_router)
-app.include_router(report_router)
-app.include_router(auth_router)
+app.include_router(
+    detection_router
+)
+
+app.include_router(
+    video_router
+)
+
+app.include_router(
+    analytics_router
+)
+
+app.include_router(
+    history_router
+)
+
+app.include_router(
+    alert_router
+)
+
+app.include_router(
+    export_router
+)
+
+app.include_router(
+    report_router
+)
+
+app.include_router(
+    auth_router
+)
 
 
-# --------------------------------------------------
-# Basic endpoints
-# --------------------------------------------------
+# ============================================================
+# BASIC ENDPOINTS
+# ============================================================
 
 @app.get("/")
 def home():
+
     return {
         "message": "Welcome to VisionEdge API"
     }
@@ -146,6 +240,7 @@ def home():
 
 @app.get("/health")
 def health():
+
     return {
         "status": "running"
     }
